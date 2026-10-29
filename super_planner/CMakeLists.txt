@@ -63,6 +63,11 @@ if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
   ament_add_gtest(test_super_ret_code test/test_super_ret_code.cpp)
   target_include_directories(test_super_ret_code PRIVATE include)
+  ament_add_gtest(test_super_fsm test/test_super_fsm.cpp)
+  ament_target_dependencies(test_super_fsm ament_index_cpp rclcpp)
+  target_link_libraries(test_super_fsm super)
+  target_compile_definitions(test_super_fsm PRIVATE
+    TEST_CONFIG_PATH="${CMAKE_CURRENT_SOURCE_DIR}/config/click_smooth_ros2.yaml")
 endif()
 
 ament_package()

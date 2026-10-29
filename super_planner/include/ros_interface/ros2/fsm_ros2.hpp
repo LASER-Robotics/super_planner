@@ -50,7 +50,7 @@ namespace fsm {
         rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr goal_sub_;
 
         rclcpp::TimerBase::SharedPtr execution_timer_, replan_timer_, cmd_timer_;
-        rclcpp::CallbackGroup::SharedPtr exec_cbk_group_, replan_cbk_group_, cmd_cbk_group_, goal_cbk_group_;
+        rclcpp::CallbackGroup::SharedPtr exec_cbk_group_;
 
         mars_quadrotor_msgs::msg::PositionCommand pid_cmd_;
         rog_map::ROGMapROS::Ptr map_ptr_;
@@ -291,6 +291,8 @@ namespace fsm {
 
             // 初始化参数读取
             nh_ = nh;
+            // Goal, state and command callbacks share the same FSM state.
+            exec_cbk_group_ = nh_->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
             reference_frame_id_ = nh_->declare_parameter<std::string>("reference_frame_id", "world");
             cfg_ = Config(cfg_path);
             map_ptr_ = std::make_shared<rog_map::ROGMapROS>(nh_, cfg_path);
@@ -305,9 +307,8 @@ namespace fsm {
             int cmd_cnt = 0;
 
             if (cfg_.click_goal_en) {
-                goal_cbk_group_ = nh_->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
                 rclcpp::SubscriptionOptions so;
-                so.callback_group = goal_cbk_group_;
+                so.callback_group = exec_cbk_group_;
                 goal_sub_ = nh_->create_subscription<geometry_msgs::msg::PoseStamped>(
                         cfg_.click_goal_topic,
                         qos,
@@ -323,21 +324,18 @@ namespace fsm {
             }
 
             if (cfg_.timer_en) {
-                exec_cbk_group_ = nh_->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
                 execution_timer_ = nh_->create_wall_timer(
                         std::chrono::milliseconds(10),
                         std::bind(&FsmRos2::mainFsmTimerCallback, this),
                         exec_cbk_group_
                 );
 
-                cmd_cbk_group_ = nh_->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
                 cmd_timer_ = nh_->create_wall_timer(
                         std::chrono::milliseconds(10),
                         std::bind(&FsmRos2::pubCmdTimerCallback, this),
-                        cmd_cbk_group_
+                        exec_cbk_group_
                 );
                 const int replan_ratems = static_cast<int>(1.0 / cfg_.replan_rate * 1000);
-                replan_cbk_group_ = nh_->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
                 replan_timer_ = nh_->create_wall_timer(
                         std::chrono::milliseconds(replan_ratems),
                         std::bind(&FsmRos2::replanTimerCallback, this),
@@ -379,6 +377,9 @@ namespace fsm {
             getOneHeartBeatMsg(heartbeat, traj_finish_);
             if (machine_state_ == EMER_STOP) {
                 heartbeat.type |= mars_quadrotor_msgs::msg::PolynomialTrajectory::EMER_STOP;
+                mpc_cmd_pub_->publish(heartbeat);
+                ChangeState("PubCmdCallback", WAIT_GOAL);
+                return;
             }
             getOnePositionCommand(pid_cmd_, traj_finish_);
             mpc_cmd_pub_->publish(heartbeat);

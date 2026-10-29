@@ -172,7 +172,7 @@ void Fsm::callMainFsmOnce()
       break;
     }
     case EMER_STOP: {
-      ChangeState("MainFsmCallback", WAIT_GOAL);
+      // The command callback clears this state after publishing the emergency heartbeat.
       break;
     }
     default:
@@ -226,6 +226,7 @@ void Fsm::setGoalPosiAndYaw(const Vec3f & p, const Quatf & q)
 
   started_ = true;
   gi_.new_goal = true;
+  finish_plan = false;
 }
 
 void Fsm::ChangeState(const string & call_func, const MACHINE_STATE & new_state)
